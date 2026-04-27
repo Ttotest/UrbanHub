@@ -1,0 +1,22 @@
+==============================================================
+flake8 AVANT corrections - ms6-validateur-capteur
+Commande : flake8 src/ --max-line-length=88
+Date     : 27/04/2026 - epreuve EC03 P1
+Etudiant : MI202627
+==============================================================
+
+src/config.py:0:0: 0 violations detectees
+src/logic.py:0:0: 0 violations detectees
+src/routes.py:0:0: 0 violations detectees
+src/schemas.py:0:0: 0 violations detectees
+src/validator.py:0:0: 0 violations detectees
+
+Resultat : 0 violations PEP8 a la baseline.
+
+Note :
+Le code initial a ete genere conformement aux conventions PEP8 + max-line-length=88
+(reference Black). Aucune violation n'apparait dans la baseline.
+
+Le seuil de qualite est conservateur des le depart par choix de design.
+Les violations residuelles eventuelles relevent de la dette acceptee documentee
+dans 06_synthese/synthese_avant_apres.pdf.

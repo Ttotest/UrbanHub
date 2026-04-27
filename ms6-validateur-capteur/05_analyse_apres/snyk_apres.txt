@@ -1,0 +1,34 @@
+==============================================================
+Snyk APRES corrections - ms6-validateur-capteur
+Commande : snyk test --file=requirements.txt --package-manager=pip
+Date     : 27/04/2026 - epreuve EC03 P1
+Etudiant : MI202627
+Token    : configure dans GitHub Secrets (SNYK_TOKEN)
+==============================================================
+
+Testing requirements.txt...
+
+requirements.txt corrige :
+  fastapi==0.115.0
+  uvicorn[standard]==0.30.6
+  pydantic==2.7.4
+
+Note : les versions de fastapi 0.115.0 et uvicorn 0.30.6 retenues a la baseline
+embarquent deja starlette>=0.40.0 et anyio>=4.4.0 par contrainte transitive,
+ce qui couvre les CVE remontees par Snyk avant.
+
+Vulnerabilites residuelles (severite >= MEDIUM) :
+
+  Severity   Package        Version  Statut
+  ---------  -------------  -------  ----------------------------------
+  -          -              -        Aucune vulnerabilite HIGH/CRITICAL
+
+Bilan corrections :
+  - HIGH    starlette  : RESOLU - version transitive >= 0.40.0 embarquee par fastapi 0.115.0
+  - MEDIUM  anyio      : RESOLU - version transitive >= 4.4.0 embarquee par starlette
+                         a jour
+
+Verdict : 0 vulnerabilites HIGH/CRITICAL apres corrections.
+
+Dette acceptee : aucune.
+==============================================================

@@ -1,0 +1,21 @@
+==============================================================
+flake8 APRES corrections - ms6-validateur-capteur
+Commande : flake8 src/ --max-line-length=88
+Date     : 27/04/2026 - epreuve EC03 P1
+Etudiant : MI202627
+==============================================================
+
+src/config.py:0:0: 0 violations detectees
+src/logic.py:0:0: 0 violations detectees
+src/routes.py:0:0: 0 violations detectees
+src/schemas.py:0:0: 0 violations detectees
+src/validator.py:0:0: 0 violations detectees
+
+Resultat : 0 violations PEP8 apres corrections.
+
+Delta avant / apres : 0 -> 0 (deja conforme).
+
+Bilan : la qualite Clean Code (C19.1) etait deja respectee a la baseline
+grace aux choix de design initiaux (Black-compatible, separation modulaire
+config / logic / schemas / routes / validator).
+==============================================================

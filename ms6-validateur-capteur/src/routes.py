@@ -1,29 +1,29 @@
-from fastapi import APIRouter
+"""Routes FastAPI du validateur de donnees capteur."""
+from fastapi import APIRouter, status
 
-from src.config import SENSOR_THRESHOLDS
-from src.schemas import SensorValidationRequest, SensorValidationResponse
-from src.validator import classify_sensor_value
+from src.logic import validate_sensor_data
+from src.schemas import SensorData, ValidationResult
+
 
 router = APIRouter()
 
 
-@router.get("/health")
-def healthcheck() -> dict[str, str]:
+@router.get("/health", status_code=status.HTTP_200_OK)
+def health() -> dict:
+    """Healthcheck utilise par docker-compose et le job deploy-staging du pipeline."""
     return {"status": "ok"}
 
 
-@router.get("/thresholds")
-def list_thresholds() -> dict[str, dict[str, float | str]]:
-    return {
-        sensor: {
-            "moderate": config.moderate,
-            "critical": config.critical,
-            "unit": config.unit,
-        }
-        for sensor, config in SENSOR_THRESHOLDS.items()
-    }
+@router.post(
+    "/validate",
+    response_model=ValidationResult,
+    status_code=status.HTTP_200_OK,
+)
+def validate(payload: SensorData) -> dict:
+    """Valide une donnee capteur et retourne sa classification metier.
 
-
-@router.post("/validate", response_model=SensorValidationResponse)
-def validate_sensor(payload: SensorValidationRequest) -> dict:
-    return classify_sensor_value(payload.sensor, payload.value)
+    Ne renvoie jamais une erreur HTTP pour un capteur inconnu : la reponse
+    est `level=unknown` avec `valid=False`, conformement au cas 4 du
+    sujet EC03 (§3.3).
+    """
+    return validate_sensor_data(payload.sensor, payload.value)

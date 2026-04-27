@@ -1,39 +1,91 @@
-name: MS6 Validateur Capteur - CI/CD
+name: MS6 - Validateur de donnees capteur
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop, "feature/ms6-validateur-ec03"]
     paths:
       - "ms6-validateur-capteur/**"
-      - "docker-compose.yml"
       - ".github/workflows/ms6-validateur.yml"
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
       - "ms6-validateur-capteur/**"
-      - "docker-compose.yml"
       - ".github/workflows/ms6-validateur.yml"
-
-permissions:
-  contents: read
-  packages: write
-  security-events: write
+  workflow_dispatch:
+    inputs:
+      phase:
+        description: "Phase EC03 (avant/apres) pour nommer le bundle d'artefacts"
+        required: false
+        default: "avant"
+        type: choice
+        options:
+          - avant
+          - apres
 
 env:
   PYTHON_VERSION: "3.11"
-  SERVICE_DIR: ms6-validateur-capteur
-  IMAGE_NAME: ghcr.io/tsioryrobson/urbanhub/ms6-validateur
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/urbanhub/ms6-validateur
 
 jobs:
-  quality-reports:
-    name: Tests, coverage, SonarCloud and Snyk reports
+  # ---------------------------------------------------------
+  # Etape 1 - test : pytest + coverage (gate 80%)
+  # ---------------------------------------------------------
+  test:
+    name: 1. test (pytest + coverage 80%)
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.SERVICE_DIR }}
-    env:
-      PYTHONPATH: ${{ github.workspace }}/ms6-validateur-capteur
+        working-directory: ms6-validateur-capteur
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            ms6-validateur-capteur/requirements.txt
+            ms6-validateur-capteur/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest + coverage (gate 80%)
+        run: |
+          mkdir -p 03_rapport_tests
+          pytest tests/ \
+            --tb=short \
+            --junitxml=03_rapport_tests/rapport_tests.xml \
+            --cov=src \
+            --cov-report=term \
+            --cov-report=xml:03_rapport_tests/coverage.xml \
+            --cov-fail-under=80 \
+            2>&1 | tee 03_rapport_tests/rapport_tests.txt
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ms6-validateur-tests
+          path: |
+            ms6-validateur-capteur/03_rapport_tests/rapport_tests.txt
+            ms6-validateur-capteur/03_rapport_tests/rapport_tests.xml
+            ms6-validateur-capteur/03_rapport_tests/coverage.xml
+
+  # ---------------------------------------------------------
+  # Etape 2 - quality : SonarCloud + Snyk + flake8
+  # ---------------------------------------------------------
+  quality:
+    name: 2. quality (SonarCloud + Snyk + flake8)
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: ms6-validateur-capteur
     steps:
       - name: Checkout monorepo
         uses: actions/checkout@v4
@@ -54,90 +106,184 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Run tests with coverage gate
+      - name: Re-run pytest for coverage.xml (Sonar)
         run: |
-          pytest tests \
-            --junitxml=report_tests.xml \
+          mkdir -p 03_rapport_tests
+          pytest tests/ \
+            --junitxml=03_rapport_tests/rapport_tests.xml \
             --cov=src \
-            --cov-config=.coveragerc \
-            --cov-branch \
-            --cov-report=term-missing \
-            --cov-report=xml:coverage.xml \
-            --cov-fail-under=80
+            --cov-report=xml:03_rapport_tests/coverage.xml \
+            --cov-fail-under=80 \
+            2>&1 | tee 03_rapport_tests/rapport_tests.txt
 
-      - name: Upload coverage and test reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: ms6-validateur-coverage-report
-          path: |
-            ms6-validateur-capteur/coverage.xml
-            ms6-validateur-capteur/report_tests.xml
+      - name: Compute phase folder
+        id: phase
+        run: |
+          PHASE="${{ github.event.inputs.phase || 'apres' }}"
+          echo "phase=${PHASE}" >> "$GITHUB_OUTPUT"
+          echo "dir=0${{ '4' }}_analyse_${PHASE}" >> "$GITHUB_OUTPUT"
+          mkdir -p "04_analyse_${PHASE}" "05_analyse_${PHASE}"
 
-      - name: SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@v7
+      - name: Run flake8 (capture phase)
+        run: |
+          PHASE="${{ steps.phase.outputs.phase }}"
+          if [ "${PHASE}" = "avant" ]; then
+            DIR="04_analyse_avant"
+          else
+            DIR="05_analyse_apres"
+          fi
+          mkdir -p "${DIR}"
+          flake8 src/ --max-line-length=88 \
+            2>&1 | tee "${DIR}/flake8_${PHASE}.txt" || true
+
+      - name: SonarCloud Scan
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'https://sonarcloud.io' }}
         with:
           projectBaseDir: ms6-validateur-capteur
+          args: >
+            -Dsonar.projectKey=Ttotest_UrbanHub
+            -Dsonar.organization=ttotest
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.python.coverage.reportPaths=03_rapport_tests/coverage.xml
+            -Dsonar.python.xunit.reportPath=03_rapport_tests/rapport_tests.xml
 
-      - name: Snyk dependency report
-        uses: snyk/actions/python@master
+      - name: Run Snyk (JSON + texte, capture phase)
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          command: test
-          args: --file=ms6-validateur-capteur/requirements.txt --json-file-output=ms6-validateur-capteur/snyk-report.json
+        run: |
+          PHASE="${{ steps.phase.outputs.phase }}"
+          if [ "${PHASE}" = "avant" ]; then
+            DIR="04_analyse_avant"
+          else
+            DIR="05_analyse_apres"
+          fi
+          mkdir -p "${DIR}"
+          if [ -z "${SNYK_TOKEN}" ]; then
+            echo "SNYK_TOKEN absent, placeholder." | tee "${DIR}/snyk_${PHASE}.txt"
+            echo '{"vulnerabilities":[],"note":"SNYK_TOKEN missing"}' > "${DIR}/snyk_${PHASE}.json"
+          else
+            npm install -g snyk
+            snyk auth "${SNYK_TOKEN}"
+            snyk test --file=requirements.txt --package-manager=pip \
+              --json-file-output="${DIR}/snyk_${PHASE}.json" || true
+            snyk test --file=requirements.txt --package-manager=pip \
+              2>&1 | tee "${DIR}/snyk_${PHASE}.txt" || true
+          fi
 
-      - name: Upload Snyk report
-        uses: actions/upload-artifact@v4
+      - name: Upload quality bundle
         if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: ms6-validateur-snyk-report
-          path: ms6-validateur-capteur/snyk-report.json
-          if-no-files-found: warn
+          name: ms6-validateur-quality-${{ github.event.inputs.phase || 'apres' }}-${{ github.run_number }}
+          path: |
+            ms6-validateur-capteur/03_rapport_tests/**
+            ms6-validateur-capteur/04_analyse_avant/**
+            ms6-validateur-capteur/05_analyse_apres/**
 
-  build-and-push:
-    name: Build image, verify port 8000 and push GHCR
+  # ---------------------------------------------------------
+  # Etape 3 - build : docker build + push ghcr.io + docker run + curl /docs
+  # ---------------------------------------------------------
+  build:
+    name: 3. build (docker + ghcr.io + curl /docs)
     runs-on: ubuntu-latest
-    needs: quality-reports
-    if: github.event_name == 'push'
-
+    needs: quality
+    permissions:
+      contents: read
+      packages: write
     steps:
       - name: Checkout monorepo
         uses: actions/checkout@v4
 
-      - name: Log in to GHCR
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker image
+      - name: Compute image tags
+        id: tags
         run: |
-          docker build \
-            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            -t ${{ env.IMAGE_NAME }}:latest \
-            ./${{ env.SERVICE_DIR }}
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER_LC}/urbanhub/ms6-validateur"
+          echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${IMAGE}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=${IMAGE}:latest" >> "$GITHUB_OUTPUT"
 
-      - name: Verify container responds on port 8000
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./ms6-validateur-capteur
+          file: ./ms6-validateur-capteur/Dockerfile
+          push: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: |
+            ${{ steps.tags.outputs.sha_tag }}
+            ${{ steps.tags.outputs.latest_tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test - docker run + curl /docs
         run: |
-          docker run -d --name ms6-validateur-test -p 8000:8000 ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          for i in {1..20}; do
-            if curl -fsS http://localhost:8000/health; then
-              docker logs ms6-validateur-test
-              docker rm -f ms6-validateur-test
+          IMAGE="${{ steps.tags.outputs.sha_tag }}"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            IMAGE="ms6-validateur:smoke"
+            docker build -t "${IMAGE}" ./ms6-validateur-capteur
+          fi
+          docker run -d --name ms6-smoke -p 8000:8000 "${IMAGE}"
+          for i in $(seq 1 20); do
+            if curl -fsS http://localhost:8000/docs >/dev/null; then
+              echo "OK: /docs repond apres ${i} tentative(s)"
+              docker rm -f ms6-smoke
               exit 0
             fi
             sleep 2
           done
-          docker logs ms6-validateur-test
-          docker rm -f ms6-validateur-test
+          echo "KO: /docs n'a pas repondu en 40s"
+          docker logs ms6-smoke
+          docker rm -f ms6-smoke
           exit 1
 
-      - name: Push Docker image to GHCR
+  # ---------------------------------------------------------
+  # Etape 4 - deploy-staging : docker compose up
+  # ---------------------------------------------------------
+  deploy-staging:
+    name: 4. deploy-staging (compose + healthcheck)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: docker compose up ms6-validateur
+        run: docker compose up -d --build ms6-validateur
+
+      - name: Wait for /docs healthcheck
         run: |
-          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.IMAGE_NAME }}:latest
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8006/docs >/dev/null; then
+              echo "Service healthy after ${i} attempt(s)"
+              docker compose logs ms6-validateur | tail -30
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Service did not become healthy in time."
+          docker compose logs ms6-validateur
+          exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

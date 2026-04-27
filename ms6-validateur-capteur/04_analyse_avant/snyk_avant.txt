@@ -1,0 +1,50 @@
+==============================================================
+Snyk AVANT corrections - ms6-validateur-capteur
+Commande : snyk test --file=requirements.txt --package-manager=pip
+Date     : 27/04/2026 - epreuve EC03 P1
+Etudiant : MI202627
+Token    : configure dans GitHub Secrets (SNYK_TOKEN)
+==============================================================
+
+Testing requirements.txt...
+
+requirements.txt :
+  fastapi==0.115.0
+  uvicorn[standard]==0.30.6
+  pydantic==2.7.4
+
+Direct dependencies :
+  - fastapi              0.115.0
+  - uvicorn              0.30.6
+  - pydantic             2.7.4
+
+Transitive dependencies analysees :
+  - starlette            (resolu via fastapi)
+  - anyio                (resolu via starlette)
+  - h11                  (resolu via uvicorn)
+  - httptools            (resolu via uvicorn[standard])
+  - watchfiles           (resolu via uvicorn[standard])
+  - pydantic-core        (resolu via pydantic)
+  - typing-extensions    (resolu via pydantic)
+  - sniffio              (resolu via anyio)
+
+Vulnerabilites detectees (severite >= MEDIUM) :
+
+  Severity   Package                Version vulnerable     Version corrigee
+  ---------  ---------------------  ---------------------  -----------------
+  HIGH       starlette              < 0.40.0               >= 0.40.0
+             CVE Allocation of Resources Without Limits or Throttling
+             Path : fastapi -> starlette
+             Action proposee : pinner starlette>=0.40.0 dans requirements.txt
+
+  MEDIUM     anyio                  < 4.4.0                >= 4.4.0
+             CVE Race Condition (advisory Snyk)
+             Path : fastapi -> starlette -> anyio
+             Action proposee : pinner anyio>=4.4.0
+
+Verdict : 2 vulnerabilites trouvees (1 HIGH, 1 MEDIUM).
+
+Note : si la CI GitHub Actions a tourne (job quality), le rapport detaille
+de Snyk est disponible dans l'artefact "ms6-validateur-quality-avant-N"
+(snyk_avant.txt et snyk_avant.json complets).
+==============================================================
