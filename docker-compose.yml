@@ -134,3 +134,18 @@ services:
       RABBITMQ_HOST: rabbitmq
     command: ["python", "src/main.py"]
     restart: unless-stopped
+
+  ms6-validateur:
+    build:
+      context: ./ms6-validateur-capteur
+    image: ghcr.io/tsioryrobson/urbanhub/ms6-validateur:latest
+    container_name: ms6-validateur
+    ports:
+      - "8006:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
