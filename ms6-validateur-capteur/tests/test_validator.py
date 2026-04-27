@@ -6,6 +6,7 @@ Couvre :
   - test_critical         : valeur >= seuil critique   -> critical,  valid=False
   - test_unknown_sensor   : capteur non repertorie     -> unknown,   valid=False
   - test_capteur_ajoute   : 5e capteur (humidity)      -> classification correcte
+  - test_capteur_bonus    : 6e capteur (illuminance)   -> classification correcte
   - test_health           : endpoint /health
   - test_classify_value   : couverture de la logique pure
 """
@@ -65,7 +66,9 @@ def test_critical() -> None:
 
 
 def test_unknown_sensor() -> None:
-    response = client.post("/validate", json={"sensor": "radioactivity", "value": 1.0})
+    response = client.post(
+        "/validate", json={"sensor": "radioactivity", "value": 1.0}
+    )
 
     body = response.json()
     assert response.status_code == 200
@@ -86,6 +89,29 @@ def test_capteur_ajoute_humidity_normal() -> None:
 
 def test_capteur_ajoute_humidity_critical() -> None:
     response = client.post("/validate", json={"sensor": "humidity", "value": 95.0})
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["valid"] is False
+    assert body["level"] == LEVEL_CRITICAL
+
+
+def test_capteur_bonus_illuminance_normal() -> None:
+    response = client.post(
+        "/validate", json={"sensor": "illuminance", "value": 800.0}
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["valid"] is True
+    assert body["level"] == LEVEL_NORMAL
+    assert body["sensor"] == "illuminance"
+
+
+def test_capteur_bonus_illuminance_critical() -> None:
+    response = client.post(
+        "/validate", json={"sensor": "illuminance", "value": 9000.0}
+    )
 
     body = response.json()
     assert response.status_code == 200
@@ -116,6 +142,14 @@ def test_validate_sensor_data_pure_unknown() -> None:
     assert result["valid"] is False
     assert result["level"] == "unknown"
     assert "message" in result
+
+
+def test_validate_sensor_data_pure_empty_string() -> None:
+    """Garde-fou : capteur vide -> traite comme inconnu, jamais une erreur."""
+    result = validate_sensor_data("", 42.0)
+
+    assert result["valid"] is False
+    assert result["level"] == "unknown"
 
 
 def test_validate_uppercase_sensor_is_normalized() -> None:
