@@ -5,10 +5,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
+
+RUN addgroup --system appgroup \
+    && adduser --system --ingroup appgroup appuser \
+    && chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 8000
 

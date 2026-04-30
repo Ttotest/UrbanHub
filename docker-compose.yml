@@ -119,13 +119,6 @@ services:
     command: ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8003"]
     restart: unless-stopped
 
-  ms6-validateur-capteur:
-    image: ghcr.io/tsioryrobson/urbanhub/ms6-validateur:latest
-    container_name: ms6-validateur-capteur
-    ports:
-      - "8000:8000"
-    restart: unless-stopped
-
   ms-journalisation:
     build:
       context: ./ms-journalisation
@@ -149,6 +142,8 @@ services:
     container_name: ms6-validateur
     ports:
       - "8006:8000"
+    networks:
+      - urbanhub-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
       interval: 10s
@@ -156,3 +151,7 @@ services:
       retries: 5
       start_period: 10s
     restart: unless-stopped
+
+networks:
+  urbanhub-network:
+    driver: bridge

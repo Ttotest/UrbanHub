@@ -10,6 +10,7 @@ Couvre :
   - test_health           : endpoint /health
   - test_classify_value   : couverture de la logique pure
 """
+import pytest
 from fastapi.testclient import TestClient
 
 from src.logic import (
@@ -40,7 +41,7 @@ def test_normal() -> None:
     assert body["valid"] is True
     assert body["level"] == LEVEL_NORMAL
     assert body["sensor"] == "co2"
-    assert body["value"] == 500.0
+    assert body["value"] == pytest.approx(500.0)
     assert body["threshold"] == 800
     assert "timestamp" in body
 

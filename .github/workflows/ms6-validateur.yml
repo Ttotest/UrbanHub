@@ -152,6 +152,9 @@ jobs:
             -Dsonar.tests=tests
             -Dsonar.python.coverage.reportPaths=03_rapport_tests/coverage.xml
             -Dsonar.python.xunit.reportPath=03_rapport_tests/rapport_tests.xml
+            -Dsonar.coverage.exclusions=tests/**
+            -Dsonar.exclusions=03_rapport_tests/**,04_analyse_avant/**,05_analyse_apres/**,06_synthese/**,*.txt,*.md
+            -Dsonar.qualitygate.wait=true
 
       - name: Run Snyk (JSON + texte, capture phase)
         continue-on-error: true
@@ -218,7 +221,7 @@ jobs:
           OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           IMAGE="ghcr.io/${OWNER_LC}/urbanhub/ms6-validateur"
           echo "image=${IMAGE}" >> "$GITHUB_OUTPUT"
-          echo "sha_tag=${IMAGE}:${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "sha_tag=${IMAGE}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "latest_tag=${IMAGE}:latest" >> "$GITHUB_OUTPUT"
 
       - name: Build and push Docker image

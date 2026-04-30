@@ -12,6 +12,7 @@ chaque mesure brute est evaluee par rapport a deux seuils (modere et critique) e
 classifiee normal / moderate / critical.
 
 Couvre les exigences BC01 :
+
 - EX-ENV-02 : seuils de pollution configurables (`src/config.py`)
 - EX-ENV-03 : depassements generent des evenements classifies (level critical -> valid=false)
 - EX-INC-02 : incidents horodates (timestamp UTC ISO-8601)
@@ -39,13 +40,15 @@ POST /validate  { "sensor": "ghost", "value": 1.0 }
 
 ### Capteurs supportes (5 minimum, conforme au sujet)
 
+
 | Capteur     | Modere | Critique | Unite   |
-|-------------|--------|----------|---------|
+| ----------- | ------ | -------- | ------- |
 | co2         | 800    | 1000     | ppm     |
 | temperature | 35     | 40       | C       |
 | noise       | 70     | 85       | dB      |
 | pm25        | 25     | 50       | ug/m3   |
 | humidity    | 70     | 85       | percent |
+
 
 `humidity` est le **capteur supplementaire** ajoute conformement a la consigne
 "ajouter au moins un capteur supplementaire".
@@ -115,7 +118,7 @@ ms6-validateur:
 
 ## Declaration d'utilisation d'IA (obligatoire — Format de rendu EC03)
 
-- **Outil IA utilise** : Cursor + Claude (Anthropic) — assistant de codage de l'IDE.
+- **Outil IA utilise** : Claude (Anthropic) — assistant de codage de l'IDE VSCode.
 - **Parties concernees** :
   - Generation du squelette de `validator.py`, `logic.py`, `schemas.py`, `routes.py`, `config.py` a partir de la specification §3 du sujet.
   - Generation des tests `tests/test_validator.py` couvrant les 4 cas obligatoires (normal / moderate / critical / unknown) plus le capteur ajoute (humidity).
@@ -125,6 +128,6 @@ ms6-validateur:
   1. "Voici le sujet EC03 (PDF) et le format de rendu. Genere le scaffold du microservice ms6-validateur-capteur conforme exact au sujet : 5 capteurs, endpoint POST /validate, classification normal/moderate/critical/unknown, code modulaire (config + logic + schemas + routes + validator)."
   2. "Genere tests/test_validator.py avec au moins 5 tests pytest couvrant test_normal, test_moderate, test_critical, test_unknown_sensor, test_capteur_ajoute, plus tests de la logique pure pour atteindre >= 80 % de couverture."
   3. "Genere le workflow GitHub Actions a 4 jobs sequentiels test -> quality -> build -> deploy-staging conforme au sujet (push ghcr.io, docker run + curl /docs, port 8006:8000, secrets SONAR_TOKEN/SNYK_TOKEN/GHCR_TOKEN)."
-  4. "Pour la phase 'apres' du livrable C18 : propose des versions epinglees securisees pour fastapi, uvicorn, pydantic et explique l'impact Snyk."
+  4. "Pour la phase 'apres' du livrable C18 : propose des versions epinglees securisees pour fastapi 0.120.0, uvicorn 0.38.0, pydantic 2.11.10 et explique l'impact Snyk."
 
 L'etudiant reste **entierement responsable** du code rendu : chaque fichier a ete relu, complete, adapte au contexte du monorepo `UrbanHub` (organisation `tsioryrobson`) et aux conventions deja en place dans le groupe (architecture hexagonale legere, sonar-project.properties, structure 03_rapport_tests / 04_analyse_avant / 05_analyse_apres / 06_synthese). Aucun copier-coller massif sans comprehension n'a ete realise.
