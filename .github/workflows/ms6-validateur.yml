@@ -65,6 +65,23 @@ jobs:
             --cov-report=xml:03_rapport_tests/coverage.xml \
             --cov-fail-under=80 \
             2>&1 | tee 03_rapport_tests/rapport_tests.txt
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          report = "03_rapport_tests/coverage.xml"
+          tree = ET.parse(report)
+          root = tree.getroot()
+          sources = root.find("sources")
+          if sources is not None:
+              for source in list(sources):
+                  sources.remove(source)
+              ET.SubElement(sources, "source").text = "."
+          for class_node in root.findall(".//class"):
+              filename = class_node.get("filename", "")
+              if filename and "/" not in filename and chr(92) not in filename:
+                  class_node.set("filename", f"src/{filename}")
+          tree.write(report, encoding="utf-8", xml_declaration=True)
+          PY
 
       - name: Upload test artifacts
         if: always()
@@ -115,6 +132,23 @@ jobs:
             --cov-report=xml:03_rapport_tests/coverage.xml \
             --cov-fail-under=80 \
             2>&1 | tee 03_rapport_tests/rapport_tests.txt
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          report = "03_rapport_tests/coverage.xml"
+          tree = ET.parse(report)
+          root = tree.getroot()
+          sources = root.find("sources")
+          if sources is not None:
+              for source in list(sources):
+                  sources.remove(source)
+              ET.SubElement(sources, "source").text = "."
+          for class_node in root.findall(".//class"):
+              filename = class_node.get("filename", "")
+              if filename and "/" not in filename and chr(92) not in filename:
+                  class_node.set("filename", f"src/{filename}")
+          tree.write(report, encoding="utf-8", xml_declaration=True)
+          PY
 
       - name: Compute phase folder
         id: phase

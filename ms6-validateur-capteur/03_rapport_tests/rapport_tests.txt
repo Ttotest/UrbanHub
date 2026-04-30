@@ -16,4 +16,4 @@ TOTAL                 67      0     12      0   100%
 Coverage XML written to file 03_rapport_tests/coverage.xml
 
 Required test coverage of 80% reached. Total coverage: 100.00%
-18 passed in 2.88s
+18 passed in 2.87s
