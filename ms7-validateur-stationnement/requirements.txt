@@ -1,5 +1,5 @@
-# Dependances runtime - versions fixees (version initiale)
-fastapi==0.96.0
-uvicorn[standard]==0.22.0
-pydantic==1.10.9
+# Dependances runtime - versions fixees (APRES corrections Snyk)
+fastapi==0.120.0
+uvicorn[standard]==0.38.0
+pydantic==2.11.10
 # Dependances de developpement (tests, couverture, lint) : voir requirements-dev.txt
