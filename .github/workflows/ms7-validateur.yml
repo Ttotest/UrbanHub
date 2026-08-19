@@ -1,8 +1,8 @@
-name: MS7 - Validateur d'occupation de stationnement
+name: MS7 - Validateur stationnement (rattrapage MI202627)
 
 on:
   push:
-    branches: [main, develop, "feature/ms7-validateur-stationnement-rattrapage"]
+    branches: [main, develop, "feature/ms7-**"]
     paths:
       - "ms7-validateur-stationnement/**"
       - ".github/workflows/ms7-validateur.yml"
