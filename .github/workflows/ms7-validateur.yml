@@ -1,0 +1,276 @@
+name: MS7 - Validateur d'occupation de stationnement
+
+on:
+  push:
+    branches: [main, develop, "feature/ms7-validateur-stationnement-rattrapage"]
+    paths:
+      - "ms7-validateur-stationnement/**"
+      - ".github/workflows/ms7-validateur.yml"
+      - "docker-compose.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "ms7-validateur-stationnement/**"
+      - ".github/workflows/ms7-validateur.yml"
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.11"
+  SERVICE_DIR: ms7-validateur-stationnement
+  SONAR_PROJECT_KEY: Ttotest_UrbanHub
+  SONAR_ORG: ttotest
+
+jobs:
+  # ---------------------------------------------------------------
+  # 1. test : pip install + pytest + coverage (gate 80 %)
+  # ---------------------------------------------------------------
+  test:
+    name: 1. test (pytest + coverage >= 80%)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ms7-validateur-stationnement
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            ms7-validateur-stationnement/requirements.txt
+            ms7-validateur-stationnement/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pytest + coverage (fail under 80%)
+        run: |
+          mkdir -p 03_rapport_tests
+          pytest tests/ \
+            --tb=short \
+            --durations=0 \
+            --junitxml=03_rapport_tests/rapport_tests.xml \
+            --cov=src \
+            --cov-report=term \
+            --cov-report=xml:03_rapport_tests/coverage.xml \
+            --cov-fail-under=80 \
+            2>&1 | tee 03_rapport_tests/rapport_tests.txt
+          test "${PIPESTATUS[0]}" -eq 0
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ms7-03_rapport_tests-${{ github.run_number }}
+          path: ms7-validateur-stationnement/03_rapport_tests/
+
+  # ---------------------------------------------------------------
+  # 2. quality : SonarCloud + Snyk + flake8 (phase avant / apres)
+  # ---------------------------------------------------------------
+  quality:
+    name: 2. quality (SonarCloud + Snyk + flake8)
+    runs-on: ubuntu-latest
+    needs: test
+    defaults:
+      run:
+        working-directory: ms7-validateur-stationnement
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            ms7-validateur-stationnement/requirements.txt
+            ms7-validateur-stationnement/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Regenerate coverage.xml for SonarCloud
+        run: |
+          mkdir -p 03_rapport_tests
+          pytest tests/ \
+            --junitxml=03_rapport_tests/rapport_tests.xml \
+            --cov=src \
+            --cov-report=xml:03_rapport_tests/coverage.xml \
+            --cov-fail-under=80 -q
+
+      # La phase (avant / apres) est lue dans le fichier .phase du service :
+      # "avant" = code initial -> rapports dans 04_analyse_avant/
+      # "apres" = code corrige -> rapports dans 05_analyse_apres/
+      - name: Compute phase
+        id: phase
+        run: |
+          PHASE=$(cat .phase 2>/dev/null | tr -d '[:space:]')
+          if [ "${PHASE}" = "avant" ]; then DIR="04_analyse_avant"; else PHASE="apres"; DIR="05_analyse_apres"; fi
+          mkdir -p "${DIR}"
+          echo "phase=${PHASE}" >> "$GITHUB_OUTPUT"
+          echo "dir=${DIR}" >> "$GITHUB_OUTPUT"
+          echo "Phase = ${PHASE} -> ${DIR}"
+
+      - name: Run flake8
+        run: |
+          flake8 src/ --max-line-length=88 \
+            2>&1 | tee "${{ steps.phase.outputs.dir }}/flake8_${{ steps.phase.outputs.phase }}.txt" || true
+
+      - name: SonarCloud analysis
+        continue-on-error: true
+        uses: SonarSource/sonarqube-scan-action@v5.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        with:
+          projectBaseDir: ms7-validateur-stationnement
+          args: >
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            -Dsonar.organization=${{ env.SONAR_ORG }}
+            -Dsonar.projectName=UrbanHub-MS7-validateur-stationnement
+            -Dsonar.sources=src
+            -Dsonar.tests=tests
+            -Dsonar.python.version=3.11
+            -Dsonar.python.coverage.reportPaths=03_rapport_tests/coverage.xml
+            -Dsonar.python.xunit.reportPath=03_rapport_tests/rapport_tests.xml
+            -Dsonar.coverage.exclusions=tests/**
+            -Dsonar.exclusions=03_rapport_tests/**,04_analyse_avant/**,05_analyse_apres/**,06_synthese/**,*.txt,*.md
+
+      - name: Run Snyk (json + texte)
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          DIR="${{ steps.phase.outputs.dir }}"
+          PHASE="${{ steps.phase.outputs.phase }}"
+          if [ -z "${SNYK_TOKEN}" ]; then
+            echo "SNYK_TOKEN absent : ajouter le secret dans Settings > Secrets > Actions" | tee "${DIR}/snyk_${PHASE}.txt"
+            exit 0
+          fi
+          npm install -g snyk >/dev/null 2>&1
+          snyk auth "${SNYK_TOKEN}" >/dev/null 2>&1
+          snyk test --file=requirements.txt --package-manager=pip \
+            --json-file-output="${DIR}/snyk_${PHASE}.json" || true
+          snyk test --file=requirements.txt --package-manager=pip \
+            2>&1 | tee "${DIR}/snyk_${PHASE}.txt" || true
+
+      - name: Upload quality reports (${{ steps.phase.outputs.phase }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ms7-analyse-${{ steps.phase.outputs.phase }}-${{ github.run_number }}
+          path: |
+            ms7-validateur-stationnement/03_rapport_tests/
+            ms7-validateur-stationnement/04_analyse_avant/
+            ms7-validateur-stationnement/05_analyse_apres/
+
+  # ---------------------------------------------------------------
+  # 3. build : docker build + push ghcr.io + docker run + curl /docs
+  # ---------------------------------------------------------------
+  build:
+    name: 3. build (docker + ghcr.io + run test)
+    runs-on: ubuntu-latest
+    needs: quality
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Compute image name
+        id: img
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/${OWNER_LC}/urbanhub/ms7-validateur" >> "$GITHUB_OUTPUT"
+
+      - name: Docker build
+        run: |
+          docker build \
+            -t ${{ steps.img.outputs.image }}:${{ github.sha }} \
+            -t ${{ steps.img.outputs.image }}:latest \
+            ./ms7-validateur-stationnement
+
+      - name: Docker push (sha + latest)
+        if: github.event_name != 'pull_request'
+        run: |
+          docker push ${{ steps.img.outputs.image }}:${{ github.sha }}
+          docker push ${{ steps.img.outputs.image }}:latest
+
+      - name: Docker run verification (port 8000, /docs)
+        run: |
+          docker run -d --name ms7-check -p 8000:8000 ${{ steps.img.outputs.image }}:${{ github.sha }}
+          sleep 3
+          for i in $(seq 1 10); do
+            if curl -f -s http://localhost:8000/docs >/dev/null; then
+              echo "OK : le conteneur repond sur /docs (tentative $i)"
+              curl -s -X POST http://localhost:8000/validate \
+                -H 'Content-Type: application/json' \
+                -d '{"zone_type":"surface","capacity":50,"occupied":38}'
+              echo
+              docker rm -f ms7-check
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "KO : /docs ne repond pas"; docker logs ms7-check; docker rm -f ms7-check; exit 1
+
+  # ---------------------------------------------------------------
+  # 4. deploy-staging : docker compose up -d ms7-validateur (port 8007)
+  # ---------------------------------------------------------------
+  deploy-staging:
+    name: 4. deploy-staging (docker compose, port 8007)
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout monorepo
+        uses: actions/checkout@v4
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: docker compose up -d ms7-validateur
+        run: docker compose up -d --build ms7-validateur
+
+      - name: Wait for service on port 8007
+        run: |
+          for i in $(seq 1 20); do
+            if curl -f -s http://localhost:8007/docs >/dev/null; then
+              echo "Service ms7-validateur accessible sur le port 8007 (tentative $i)"
+              docker compose ps ms7-validateur
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Service non disponible"; docker compose logs ms7-validateur; exit 1
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
